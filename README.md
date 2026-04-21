@@ -1,146 +1,183 @@
-# 🎬 Movie Reservation System
+# Movie Reservation System
 
-A fully functional backend REST API for a movie ticket reservation system — similar to BookMyShow. Built with Python, FastAPI, and MySQL.
+A REST API for movie ticket reservation (BookMyShow-style). Built with Python, FastAPI, and MySQL.
 
-## 🚀 Technologies Used
+## Technologies
 
-- **Python** — Core programming language
-- **FastAPI** — Modern web framework for building APIs
-- **MySQL** — Relational database
-- **SQLAlchemy** — ORM for database operations
-- **Pydantic** — Data validation
-- **JWT (python-jose)** — Authentication using JSON Web Tokens
-- **bcrypt (passlib)** — Secure password hashing
+- **Python** — Core language
+- **FastAPI** — Web framework
+- **MySQL** — Database
+- **SQLAlchemy** — ORM
+- **Pydantic** — Validation
+- **JWT (python-jose)** — Authentication
+- **passlib / bcrypt** — Password hashing
 - **Uvicorn** — ASGI server
 
-## ✅ Features
+## Features
 
-- User registration with duplicate email check
-- Secure login with JWT token authentication
-- Password hashing using bcrypt
-- Add and list theaters
-- Add and list movies
-- Add seats to theaters
-- Create and list movie schedules
-- Book tickets with seat availability check
-- View booking history by user
-- Auto-generated interactive API documentation (Swagger UI)
+- User registration (duplicate email check) and login with JWT
+- Password hashing (bcrypt)
+- List / manage theaters, movies, seats, schedules
+- Book tickets with seat conflict handling (JWT identifies the user; no spoofed `user_id`)
+- Schedule/seat validation: seat must belong to the same theater as the show
+- Unique database constraint on `(schedule_id, seat_id)` plus graceful 409 on conflicts
+- Optional **admin API key** for creating catalog data (theaters, movies, seats, schedules)
+- **`GET /health`** — checks app + database connectivity (for load balancers / k8s)
+- **Pagination** — `skip` / `limit` on `GET /movies` and `GET /schedules`
+- **Schedule filters** — optional `theater_id` and `schedule_date` (YYYY-MM-DD) on `GET /schedules`
+- **CORS** — configurable via `ALLOWED_ORIGINS` (comma-separated; default `*` for development)
+- **Payment status** — `pending`, `paid`, or `failed` (enum in API and DB)
+- Swagger UI at `/docs`
 
-## 📁 Project Structure
+## Project structure
+
+```
 movie_reservation_system/
+├── alembic/             # migration env + versions
 ├── app/
 │   ├── main.py
 │   ├── database.py
+│   ├── deps.py          # DB session, JWT user, optional admin key
 │   ├── models/
-│   │   ├── user.py
-│   │   ├── theater.py
-│   │   ├── movie.py
-│   │   ├── seat.py
-│   │   ├── schedule.py
-│   │   └── ticket.py
 │   ├── schemas/
-│   │   ├── user.py
-│   │   ├── theater.py
-│   │   ├── movie.py
-│   │   ├── seat.py
-│   │   ├── schedule.py
-│   │   └── ticket.py
 │   ├── routers/
-│   │   ├── user.py
-│   │   ├── theater.py
-│   │   ├── movie.py
-│   │   ├── seat.py
-│   │   ├── schedule.py
-│   │   └── ticket.py
 │   └── services/
-│       ├── user.py
-│       ├── theater.py
-│       ├── movie.py
-│       ├── seat.py
-│       ├── schedule.py
-│       └── ticket.py
 ├── .env
 └── requirements.txt
+```
 
-## ⚙️ How to Run
+## How to run
 
-**1. Clone the repository**
-git clone https://github.com/hema2106/movie-reservation-system.git
-cd movie_reservation_system
+1. **Install dependencies**
 
-**2. Install dependencies**
-pip install -r requirements.txt
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-**3. Create `.env` file**
-DB_HOST=localhost
-DB_USER=your_mysql_username
-DB_PASSWORD=your_mysql_password
-DB_NAME=movie_reservation_db
-SECRET_KEY=your_secret_key
+2. **Create `.env`**
 
-**4. Create the database in MySQL**
-CREATE DATABASE movie_reservation_db;
+   ```env
+   DB_HOST=localhost
+   DB_USER=your_mysql_username
+   DB_PASSWORD=your_mysql_password
+   DB_NAME=movie_reservation_db
+   SECRET_KEY=long_random_string_for_jwt
+   ```
 
-**5. Run the application**
-uvicorn app.main:app --reload
+   Optional — **recommended in production**: protect catalog POST with a shared secret:
 
-**6. Open API documentation**
-http://127.0.0.1:8000/docs
+   ```env
+   ADMIN_API_KEY=your_strong_random_admin_key
+   ```
 
-## 📌 API Endpoints
+   If `ADMIN_API_KEY` is set, send it as header `X-Admin-Key: <same value>` on `POST /theaters`, `/movies`, `/seats`, `/schedules`. If unset, those POST routes stay open (development only).
+
+   You may set a single URL instead of `DB_*` pieces:
+
+   ```env
+   DATABASE_URL=mysql+pymysql://user:password@127.0.0.1:3306/movie_reservation_db
+   ```
+
+   Optional port when using `DB_*`: `DB_PORT=3306` (default is `3306`).
+
+   **CORS** — comma-separated browser origins, or `*` for development (disables credential cookies for `*`):
+
+   ```env
+   ALLOWED_ORIGINS=http://localhost:3000,https://myapp.example.com
+   ```
+
+3. **Create the database**
+
+   ```sql
+   CREATE DATABASE movie_reservation_db;
+   ```
+
+4. **Apply schema (Alembic)** — from the project root, with the same env as the app:
+
+   ```bash
+   alembic upgrade head
+   ```
+
+   Tables are no longer created automatically at startup; migrations are the source of truth. If you already have identical tables from older `create_all()` runs and Alembic complains that objects exist, either align the schema manually or, after backup, drop the old tables and run `alembic upgrade head` again. If the live schema already matches revision `001_initial`, you can mark it applied with `alembic stamp 001_initial` (only when you are sure).
+
+5. **Run the app**
+
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+6. **Open** `http://127.0.0.1:8000/docs`
+
+### New Alembic revision
+
+After you change SQLAlchemy models:
+
+```bash
+alembic revision --autogenerate -m "describe_change"
+alembic upgrade head
+```
+
+Review autogenerated scripts before applying in production.
+
+## API overview
 
 ### Users
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /users/register | Register a new user |
-| POST | /users/login | Login and get JWT token |
 
-### Theaters
 | Method | Endpoint | Description |
-|---|---|---|
-| POST | /theaters/ | Add a new theater |
-| GET | /theaters/ | Get all theaters |
+|--------|----------|-------------|
+| POST | /users/register | Register |
+| POST | /users/login | Login → JWT |
 
-### Movies
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /movies/ | Add a new movie |
-| GET | /movies/ | Get all movies |
+### Health
 
-### Seats
 | Method | Endpoint | Description |
-|---|---|---|
-| POST | /seats/ | Add a new seat |
-| GET | /seats/{theater_id} | Get all seats for a theater |
+|--------|----------|-------------|
+| GET | /health | `{"status":"ok"}` if DB is reachable |
 
-### Schedules
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /schedules/ | Create a movie schedule |
-| GET | /schedules/ | Get all schedules |
+### Theaters / movies / seats / schedules
+
+| Method | Endpoint | Notes |
+|--------|----------|--------|
+| POST | /theaters/, /movies/, /seats/, /schedules/ | Admin key if `ADMIN_API_KEY` is set |
+| GET | (list routes) | Public |
 
 ### Tickets
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /tickets/ | Book a ticket |
-| GET | /tickets/user/{user_id} | Get all tickets for a user |
 
-## 🔐 Authentication
+| Method | Endpoint | Notes |
+|--------|----------|--------|
+| POST | /tickets/ | **Bearer JWT required**; user from token |
+| GET | /tickets/me | **Bearer JWT**; your bookings only |
 
-This project uses JWT token authentication. After login, include the token in request headers:
-Authorization: Bearer your_token_here
+### Authentication
 
-## 📊 Database Schema
+After login:
 
-| Table | Description |
-|---|---|
-| users | Stores user account information |
-| theater | Stores theater details |
-| movie | Stores movie information |
-| seat | Stores individual seats per theater |
-| schedules | Links movies to theaters with date and time |
-| ticket | Stores ticket bookings |
+`Authorization: Bearer <access_token>`
 
-## 👩‍💻 Author
+## Existing MySQL database: add unique constraint
+
+If you already had a `ticket` table without this constraint, run:
+
+```sql
+ALTER TABLE ticket ADD CONSTRAINT uq_ticket_schedule_seat UNIQUE (schedule_id, seat_id);
+```
+
+## Configuration reference
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `DATABASE_URL` or `DB_*` (+ optional `DB_PORT`) | Yes | MySQL connection |
+| `SECRET_KEY` | Yes | JWT signing; login fails with 500 if missing |
+| `ADMIN_API_KEY` | No | When set, protects catalog POST via `X-Admin-Key` |
+| `ALLOWED_ORIGINS` | No | CORS origins (comma-separated); default `*` |
+
+### List endpoints query parameters
+
+| Endpoint | Parameters |
+|----------|------------|
+| `GET /movies` | `skip` (default 0), `limit` (default 100, max 500) |
+| `GET /schedules` | `skip`, `limit`, optional `theater_id`, optional `schedule_date` (date only, filters `show_datetime` to that day) |
+
+## Author
 
 Hema — BE Computer Science Engineering, IFET College of Engineering

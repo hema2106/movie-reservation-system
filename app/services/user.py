@@ -27,6 +27,11 @@ def create_user(db: Session, user: UserCreate):
     return new_user
 
 def login_user(db: Session, email: str, password: str):
+    if not SECRET_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfiguration: SECRET_KEY not set",
+        )
     user = db.query(Users).filter(Users.email == email).first()
     if not user:
         return None

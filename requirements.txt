@@ -4,5 +4,7 @@ sqlalchemy
 pymysql
 pydantic
 python-dotenv
-passlib
-python-jose
+passlib[bcrypt]
+python-jose[cryptography]
+bcrypt
+alembic

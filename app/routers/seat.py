@@ -1,20 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
+from app.deps import get_db, require_admin
+from app.models.seat import Seat
 from app.schemas.seat import SeatCreate, SeatResponse
 from app.services.seat import create_seat
-from app.database import SessionLocal
-from app.models.seat import Seat
 
 router = APIRouter()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
-@router.post("/", response_model=SeatResponse)
+@router.post("/", response_model=SeatResponse, dependencies=[Depends(require_admin)])
 def add_seat(seat: SeatCreate, db: Session = Depends(get_db)):
     return create_seat(db=db, seat=seat)
 
